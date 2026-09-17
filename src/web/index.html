@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dy-Sentry 预览</title>
+  <script src="/vendor/mpegts.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #111; color: #eee; }
+    h1 { font-size: 18px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    input[type=text] { flex: 1; min-width: 280px; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #1b1b1b; color: #eee; }
+    select, button { padding: 8px 12px; border-radius: 6px; border: 1px solid #444; background: #222; color: #eee; cursor: pointer; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    #info { background: #1b1b1b; border: 1px solid #333; border-radius: 6px; padding: 12px; margin-bottom: 16px; white-space: pre-wrap; font-size: 13px; min-height: 20px; }
+    video { width: 100%; max-width: 960px; background: #000; border-radius: 8px; }
+    .wrap { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+    .wrap video { flex: 1 1 480px; }
+    #danmu { width: 340px; max-width: 100%; background: #1b1b1b; border: 1px solid #333; border-radius: 8px; height: 480px; display: flex; flex-direction: column; }
+    #danmu-head { padding: 8px 12px; border-bottom: 1px solid #333; font-size: 13px; color: #aaa; }
+    #danmu-list { flex: 1; overflow-y: auto; padding: 8px 12px; font-size: 13px; line-height: 1.7; }
+    #danmu-list .u { color: #7fb3ff; margin-right: 6px; }
+    #danmu-list .sys { color: #888; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+    .live { background: #c0392b; } .off { background: #555; }
+  </style>
+</head>
+<body>
+  <h1>Dy-Sentry · 直播预览（M1） <span style="font-size:13px;color:#888">|</span> <a href="/manage" style="font-size:13px;color:#7fb3ff">管理页</a></h1>
+  <div class="row">
+    <input id="url" type="text" placeholder="粘贴 Dy 直播间 URL（含房间号）" />
+    <select id="quality">
+      <option value="OD">原画 OD</option>
+      <option value="BD">蓝光 BD</option>
+      <option value="UHD">超清 UHD</option>
+      <option value="HD">高清 HD</option>
+      <option value="SD">标清 SD</option>
+      <option value="LD">流畅 LD</option>
+    </select>
+    <button id="check">检查状态</button>
+    <button id="play" disabled>播放</button>
+    <button id="stop" disabled>停止</button>
+  </div>
+  <div id="info">尚未查询。</div>
+  <div class="wrap">
+    <video id="video" controls muted></video>
+    <div id="danmu">
+      <div id="danmu-head">弹幕（未连接）</div>
+      <div id="danmu-list"></div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let player = null;
+    let lastUrl = "";
+    let roomId = "";
+    let danmuWs = null;
+
+    function render(info) {
+      const live = info.is_live;
+      const badge = live ? '<span class="badge live">直播中</span>' : '<span class="badge off">未开播</span>';
+      const lines = [
+        badge,
+        '主播: ' + (info.anchor_name || '-'),
+        '标题: ' + (info.title || '-'),
+        '房间ID: ' + (info.room_id || '-'),
+        '清晰度: ' + (info.quality || '-'),
+        info.error ? ('错误: ' + info.error) : '',
+      ].filter(Boolean);
+      $('info').innerHTML = lines.join('\n');
+      $('play').disabled = !live;
+      roomId = info.room_id || "";
+    }
+
+    $('check').onclick = async () => {
+      lastUrl = $('url').value.trim();
+      if (!lastUrl) { $('info').textContent = '请先填写直播间 URL'; return; }
+      $('info').textContent = '查询中…';
+      $('play').disabled = true;
+      const q = $('quality').value;
+      const r = await fetch(`/api/status?url=${encodeURIComponent(lastUrl)}&quality=${q}`);
+      render(await r.json());
+    };
+
+    $('play').onclick = () => {
+      destroy();
+      const q = $('quality').value;
+      const src = `/api/preview?url=${encodeURIComponent(lastUrl)}&quality=${q}`;
+      if (!mpegts.getFeatureList().mseLivePlayback) { $('info').textContent = '浏览器不支持 MSE 直播播放'; return; }
+      player = mpegts.createPlayer({ type: 'flv', isLive: true, url: src });
+      player.attachMediaElement($('video'));
+      player.load();
+      player.play();
+      $('stop').disabled = false;
+      openDanmu();
+    };
+
+    function appendDanmu(m) {
+      const list = $('danmu-list');
+      const div = document.createElement('div');
+      const user = document.createElement('span');
+      user.className = 'u';
+      const body = document.createElement('span');
+      if (m.type === 'chat' || m.type === 'gift') {
+        user.textContent = (m.user || '?') + ':';
+        body.textContent = ' ' + (m.content || '');
+      } else {
+        user.className = 'u sys';
+        const label = { enter: '进入', like: '点赞', follow: '关注', stats: '在线', control: '控制' }[m.type] || m.type;
+        user.textContent = '[' + label + ']';
+        body.textContent = (m.user ? ' ' + m.user : '') + (m.content ? ' ' + m.content : '');
+      }
+      div.appendChild(user); div.appendChild(body);
+      list.appendChild(div);
+      while (list.childElementCount > 300) list.removeChild(list.firstChild);
+      list.scrollTop = list.scrollHeight;
+    }
+
+    function openDanmu() {
+      closeDanmu();
+      if (!roomId) { $('danmu-head').textContent = '弹幕（无房间ID）'; return; }
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      danmuWs = new WebSocket(`${proto}://${location.host}/api/danmaku/ws?room_id=${encodeURIComponent(roomId)}`);
+      $('danmu-head').textContent = '弹幕（连接中…）';
+      danmuWs.onopen = () => { $('danmu-head').textContent = '弹幕（已连接）'; };
+      danmuWs.onmessage = (ev) => { try { appendDanmu(JSON.parse(ev.data)); } catch (e) {} };
+      danmuWs.onclose = () => { $('danmu-head').textContent = '弹幕（已断开）'; };
+      danmuWs.onerror = () => { $('danmu-head').textContent = '弹幕（连接错误）'; };
+    }
+
+    function closeDanmu() {
+      if (danmuWs) { try { danmuWs.close(); } catch (e) {} danmuWs = null; }
+      $('danmu-list').innerHTML = '';
+      $('danmu-head').textContent = '弹幕（未连接）';
+    }
+
+    function destroy() {
+      if (player) { try { player.destroy(); } catch (e) {} player = null; }
+      closeDanmu();
+      $('stop').disabled = true;
+    }
+    $('stop').onclick = destroy;
+  </script>
+</body>
+</html>

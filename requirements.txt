@@ -1,0 +1,11 @@
+# Dy-Sentry 运行时依赖（按 docs/architecture.md §C 锁定）
+# 说明：a_bogus / X-Bogus 签名均为纯 Python（core/ab_sign.py、core/ws_signer.py），
+#       无需 JS 引擎；PyExecJS / Node.js / py-mini-racer(V8) 显式弃用。
+httpx          # 异步 HTTP：fetcher 拉取房间信息与流地址
+certifi        # TLS 证书包：WSS 主机链含自签根，需与 httpx 同源校验
+websockets     # 弹幕 WS 长连
+betterproto    # 弹幕 Protobuf 解码
+fastapi        # Web API / 流代理 / 弹幕推送
+uvicorn        # ASGI 服务器
+loguru         # 日志
+pyyaml         # 配置（YAML）

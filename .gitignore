@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# 测试与缓存
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 环境变量与密钥（红线：不进仓库）
+.env
+.env.*
+
+# 运行时配置（可能含 Cookie/密钥）与录制产物
+/config.yaml
+/rooms.yaml
+/recordings/
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
+
+# AI 协作上下文与只读参考存档（见 _agent/agent_p.md 结构约定）
+/_agent/
+/archive/

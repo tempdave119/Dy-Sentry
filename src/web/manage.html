@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dy-Sentry 管理</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #111; color: #eee; }
+    h1 { font-size: 18px; } h2 { font-size: 15px; color: #aaa; margin: 24px 0 8px; }
+    a { color: #7fb3ff; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+    input[type=text], input[type=number] { padding: 7px; border-radius: 6px; border: 1px solid #444; background: #1b1b1b; color: #eee; }
+    input.wide { flex: 1; min-width: 240px; }
+    button { padding: 7px 12px; border-radius: 6px; border: 1px solid #444; background: #222; color: #eee; cursor: pointer; }
+    button.danger { border-color: #7a3030; color: #ff9a9a; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { border: 1px solid #333; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { color: #aaa; background: #1b1b1b; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+    .live { background: #c0392b; } .off { background: #555; } .rec { background: #1e6b3a; }
+    .muted { color: #888; }
+    #msg { min-height: 18px; color: #9f9; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>Dy-Sentry · 管理 <span class="muted">|</span> <a href="/">预览页</a></h1>
+  <div id="msg"></div>
+
+  <h2>全局监控调度</h2>
+  <div class="row">
+    <label>默认轮询间隔(秒)</label>
+    <input type="number" id="poll_interval" style="width:90px" />
+    <label>全局分时段</label>
+    <input type="text" id="poll_schedule" class="wide" placeholder="如 19:00-23:00=20, 23:00-07:00=180" />
+    <button id="save-settings">保存设置</button>
+  </div>
+
+  <h2>添加房间</h2>
+  <div class="row">
+    <input type="text" id="new-url" class="wide" placeholder="Dy 直播间 URL（含房间号）" />
+    <input type="text" id="new-name" placeholder="备注名（可选）" />
+    <button id="add-room">添加</button>
+  </div>
+
+  <h2>房间列表</h2>
+  <table id="rooms-table">
+    <thead><tr>
+      <th>名称</th><th>URL</th><th>启用</th><th>分时段轮询</th><th>清晰度</th><th>录视频</th><th>录弹幕</th><th>操作</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <h2>监控状态（每 3 秒刷新）</h2>
+  <table id="status-table">
+    <thead><tr><th>名称</th><th>开播</th><th>录制中</th><th>当前间隔(s)</th><th>错误</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const msg = (t) => { $('msg').textContent = t; setTimeout(() => $('msg').textContent = '', 3000); };
+
+    async function loadSettings() {
+      const s = await (await fetch('/api/settings')).json();
+      $('poll_interval').value = s.poll_interval;
+      $('poll_schedule').value = s.poll_schedule || '';
+    }
+
+    $('save-settings').onclick = async () => {
+      const r = await fetch('/api/settings', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          poll_interval: parseInt($('poll_interval').value, 10),
+          poll_schedule: $('poll_schedule').value,
+        }),
+      });
+      msg(r.ok ? '设置已保存' : '保存失败');
+    };
+
+    $('add-room').onclick = async () => {
+      const url = $('new-url').value.trim();
+      if (!url) return msg('请填写 URL');
+      const r = await fetch('/api/rooms', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, name: $('new-name').value.trim() }),
+      });
+      if (r.ok) { $('new-url').value = ''; $('new-name').value = ''; msg('已添加'); loadRooms(); }
+      else msg('添加失败: ' + (await r.json()).detail);
+    };
+
+    async function loadRooms() {
+      const rooms = await (await fetch('/api/rooms')).json();
+      const tb = $('rooms-table').querySelector('tbody');
+      tb.innerHTML = '';
+      for (const r of rooms) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${esc(r.name || r.id)}</td>
+          <td class="muted">${esc(r.url)}</td>
+          <td><input type="checkbox" data-act="toggle" ${r.enabled ? 'checked' : ''}></td>
+          <td><input type="text" data-act="sched" value="${esc(r.poll_schedule || '')}" placeholder="HH:MM-HH:MM=秒,..." style="width:170px"></td>
+          <td><input type="text" data-act="quality" value="${esc(r.quality || '')}" style="width:60px" placeholder="OD"></td>
+          <td><input type="checkbox" data-act="video" ${r.record_video ? 'checked' : ''}></td>
+          <td><input type="checkbox" data-act="danmu" ${r.record_danmaku ? 'checked' : ''}></td>
+          <td>
+            <button data-act="save">保存</button>
+            <button data-act="del" class="danger">删除</button>
+          </td>`;
+        tr.dataset.id = r.id;
+        tb.appendChild(tr);
+      }
+    }
+
+    function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+    $('rooms-table').addEventListener('click', async (ev) => {
+      const btn = ev.target.closest('button');
+      if (!btn) return;
+      const tr = btn.closest('tr'); const id = tr.dataset.id;
+      if (btn.dataset.act === 'del') {
+        await fetch('/api/rooms/' + encodeURIComponent(id), { method: 'DELETE' });
+        msg('已删除'); loadRooms();
+      } else if (btn.dataset.act === 'save') {
+        const q = (a) => tr.querySelector(`[data-act=${a}]`);
+        const body = {
+          enabled: q('toggle').checked,
+          poll_schedule: q('sched').value,
+          quality: q('quality').value,
+          record_video: q('video').checked,
+          record_danmaku: q('danmu').checked,
+        };
+        const r = await fetch('/api/rooms/' + encodeURIComponent(id), {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+        msg(r.ok ? '房间已保存' : '保存失败');
+      }
+    });
+
+    async function loadStatus() {
+      const st = await (await fetch('/api/monitor/status')).json();
+      const tb = $('status-table').querySelector('tbody');
+      tb.innerHTML = '';
+      for (const s of st) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${esc(s.name || s.id)}</td>
+          <td>${s.is_live ? '<span class="badge live">直播中</span>' : '<span class="badge off">未开播</span>'}</td>
+          <td>${s.recording ? '<span class="badge rec">录制中</span>' : '-'}</td>
+          <td>${s.interval || '-'}</td>
+          <td class="muted">${esc(s.last_error || '')}</td>`;
+        tb.appendChild(tr);
+      }
+    }
+
+    loadSettings(); loadRooms(); loadStatus();
+    setInterval(loadStatus, 3000);
+    setInterval(loadRooms, 10000);
+  </script>
+</body>
+</html>

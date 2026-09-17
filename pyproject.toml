@@ -1,0 +1,9 @@
+[project]
+name = "dy-sentry"
+version = "0.1.0"
+description = "Dy 平台直播录制与监控工具（仅 Dy，轻量自维护）"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
