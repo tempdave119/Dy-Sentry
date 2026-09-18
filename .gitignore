@@ -27,6 +27,13 @@ htmlcov/
 /data/
 *.log
 
+# Windows 打包产物（构建产物，不进仓库）
+/dist/
+/build/
+/installer_output/
+/bin/
+.pyinstaller/
+
 # 系统文件
 .DS_Store
 Thumbs.db

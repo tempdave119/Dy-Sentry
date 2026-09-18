@@ -8,9 +8,35 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
+import sys
 import urllib.parse
 from pathlib import Path
+
+
+def _ffmpeg_bin() -> str:
+    """解析 ffmpeg 可执行文件。
+
+    优先级：环境变量 DY_FFMPEG → 打包目录（与 exe 同目录或 _MEIPASS）→ 系统 PATH 裸名。
+    非打包环境且无 DY_FFMPEG 时回退裸名 "ffmpeg"，由系统 PATH 解析（与改动前一致，单测不受影响）。
+    """
+    env = os.environ.get("DY_FFMPEG")
+    if env and os.path.isfile(env):
+        return env
+    if getattr(sys, "frozen", False):
+        cand = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+        for d in (os.path.dirname(sys.executable), getattr(sys, "_MEIPASS", "")):
+            if d and os.path.isfile(os.path.join(d, cand)):
+                return os.path.join(d, cand)
+    return "ffmpeg"
+
+
+def _ffmpeg_available() -> bool:
+    """ffmpeg 是否可取用（供 start() 守卫，替代原 shutil.which 的 PATH 检查）。"""
+    bin_ = _ffmpeg_bin()
+    return bin_ != "ffmpeg" or shutil.which("ffmpeg") is not None
+
 
 MOBILE_UA = (
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
@@ -45,7 +71,7 @@ def build_ffmpeg_cmd(
 ) -> list[str]:
     """构建 ffmpeg 拉流命令（-c copy 不转码）。headers 以 -headers 传入。"""
     cmd = [
-        "ffmpeg", "-y",
+        _ffmpeg_bin(), "-y",
         "-loglevel", "error",
         "-hide_banner",
         "-user_agent", user_agent,
@@ -90,7 +116,7 @@ def build_ffmpeg_cmd(
 def build_remux_cmd(src: str, dst: str) -> list[str]:
     """FLV/TS → MP4 转封装（-c copy 无损，+faststart 便于拖动）。"""
     return [
-        "ffmpeg", "-y",
+        _ffmpeg_bin(), "-y",
         "-loglevel", "error",
         "-hide_banner",
         "-i", src,
@@ -140,8 +166,8 @@ class VideoRecorder:
 
     async def start(self) -> int:
         """启动录制并阻塞到停止/结束。返回重试次数用尽后的退出码。"""
-        if shutil.which("ffmpeg") is None:
-            raise RuntimeError("ffmpeg not found in PATH")
+        if not _ffmpeg_available():
+            raise RuntimeError("ffmpeg not found (set DY_FFMPEG or put ffmpeg next to the executable)")
         attempts = 0
         while not self._stopped and attempts <= self.max_retries:
             cmd = build_ffmpeg_cmd(
