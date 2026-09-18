@@ -6,7 +6,10 @@
 ;   2. Inno Setup 6 installed (https://jrsoftware.org/isdl.php)
 
 #define MyAppName "Dy-Sentry"
+; 允许 CI 通过 iscc /DMyAppVersion=x.y.z 覆盖；本地手动编译时回退到 0.1.0
+#ifndef MyAppVersion
 #define MyAppVersion "0.1.0"
+#endif
 #define MyAppPublisher "Dy-Sentry"
 #define MyAppURL "https://github.com/tempdave119/Dy-Sentry"
 #define MyAppExeName "dy-sentry.exe"
