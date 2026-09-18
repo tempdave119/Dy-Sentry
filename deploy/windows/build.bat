@@ -1,7 +1,8 @@
 @echo off
 chcp 65001 >nul 2>&1
 REM Build script - Windows (PyInstaller + Inno Setup)
-REM Usage: double-click or run in CMD
+REM 本脚本位于 deploy/windows/，须在该目录内运行（双击即可，cwd 即本目录）。
+REM 依赖仓库根的 requirements.txt 与 ../bin/ffmpeg.exe（首次运行自动下载到 ../bin）。
 REM
 REM Prerequisites:
 REM   Python 3.12 installed (pip available)
@@ -31,7 +32,7 @@ REM Step 1: Check Python dependencies
 REM ================================================================
 echo [1/5] Checking Python dependencies...
 python -c "import PyInstaller" 2>nul || pip install pyinstaller --quiet
-pip install -r requirements.txt --quiet
+pip install -r ..\requirements.txt --quiet
 echo   Dependencies OK
 
 REM ================================================================
@@ -39,8 +40,8 @@ REM Step 2: Check/download ffmpeg
 REM ================================================================
 echo [2/5] Checking ffmpeg...
 
-if exist "bin\ffmpeg.exe" (
-    echo   Using local ffmpeg: bin\ffmpeg.exe
+if exist "..\bin\ffmpeg.exe" (
+    echo   Using local ffmpeg: ..\bin\ffmpeg.exe
     goto :ffmpeg_ok
 )
 
@@ -58,26 +59,26 @@ if not errorlevel 1 (
 )
 
 echo   Downloading ffmpeg for Windows...
-if not exist "bin" mkdir bin
+if not exist "..\bin" mkdir ..\bin
 echo   URL: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
-powershell -Command "& { $ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip' -OutFile 'bin\ffmpeg-download.zip' }"
+powershell -Command "& { $ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip' -OutFile '..\bin\ffmpeg-download.zip' }"
 if errorlevel 1 (
     echo   [WARN] Auto-download failed. Please download ffmpeg manually:
     echo   https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
-    echo   Extract and put ffmpeg.exe into the bin\ folder.
+    echo   Extract and put ffmpeg.exe into the ..\bin\ folder.
     goto :ffmpeg_skip
 )
 echo   Extracting...
-powershell -Command "& { Expand-Archive -Path 'bin\ffmpeg-download.zip' -DestinationPath 'bin\ffmpeg-temp' -Force }"
-for /r "bin\ffmpeg-temp" %%f in (ffmpeg.exe) do (
-    copy "%%f" "bin\ffmpeg.exe" >nul
-    echo   Extracted: bin\ffmpeg.exe
+powershell -Command "& { Expand-Archive -Path '..\bin\ffmpeg-download.zip' -DestinationPath '..\bin\ffmpeg-temp' -Force }"
+for /r "..\bin\ffmpeg-temp" %%f in (ffmpeg.exe) do (
+    copy "%%f" "..\bin\ffmpeg.exe" >nul
+    echo   Extracted: ..\bin\ffmpeg.exe
     goto :ffmpeg_extracted
 )
 :ffmpeg_extracted
-del /q "bin\ffmpeg-download.zip" 2>nul
-rmdir /s /q "bin\ffmpeg-temp" 2>nul
-if not exist "bin\ffmpeg.exe" (
+del /q "..\bin\ffmpeg-download.zip" 2>nul
+rmdir /s /q "..\bin\ffmpeg-temp" 2>nul
+if not exist "..\bin\ffmpeg.exe" (
     echo   [WARN] ffmpeg.exe not found after extraction
     goto :ffmpeg_skip
 )

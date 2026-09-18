@@ -1,0 +1,30 @@
+# Dy-Sentry 容器编排（M6）
+# 文件位于 deploy/docker/，在仓库根执行时须用 -f 指定；构建上下文仍为仓库根（含 src/、requirements.txt）。
+#
+# 构建并启动：
+#   docker compose -f deploy/docker/docker-compose.yaml up -d --build
+# 注入 Cookie（可选，提升拉流/弹幕稳定性，不写文件）：
+#   DY_COOKIE="<你的cookie>" docker compose -f deploy/docker/docker-compose.yaml up -d --build
+#
+# 访问：
+#   预览页   http://localhost:12580/
+#   管理页   http://localhost:12580/manage
+#
+# 数据持久化：../data（即仓库根 data/）挂载到容器内 /app/data，存放自愈生成的 config.yaml/rooms.yaml
+#            与录制产出 recordings/；升级镜像后数据不丢。
+services:
+  dy-sentry:
+    # Dockerfile 已归入 deploy/docker/，构建上下文须指向仓库根（含 src/ 与 requirements.txt）
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: dy-sentry:latest
+    container_name: dy-sentry
+    ports:
+      - "12580:12580"
+    environment:
+      DY_COOKIE: "${DY_COOKIE:-}"
+    # 数据卷相对本 compose 文件（deploy/docker/），故用 ../data 指向仓库根 data/
+    volumes:
+      - ../data:/app/data
+    restart: unless-stopped

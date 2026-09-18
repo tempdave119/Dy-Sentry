@@ -19,7 +19,8 @@ import sys
 
 block_cipher = None
 
-PROJECT_DIR = os.path.abspath(SPECPATH)
+# spec 现位于 deploy/windows/，回溯两级定位仓库根（src/、run.py、bin/ 均在此）
+PROJECT_DIR = os.path.abspath(os.path.join(SPECPATH, "..", ".."))
 SRC = os.path.join(PROJECT_DIR, "src")
 
 # ---- 查找 ffmpeg 二进制（Windows 为 ffmpeg.exe）----

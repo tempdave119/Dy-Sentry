@@ -1,24 +1,26 @@
 # Dy-Sentry 容器化（M6）
 
-> 总览与快速开始见根目录 [`README.md`](./README.md)。
+> 总览与快速开始见仓库根 [`README.md`](../README.md)。
 
 M1–M5 已完成并真实验收，M6 提供 Docker 容器化，便于一键部署与升级。
 镜像基于 `python:3.12-slim`，并安装系统 `ffmpeg`（视频录制运行时依赖）。
 
-## 文件
+## 文件（本目录 `deploy/docker/`）
 
 - `Dockerfile`：构建镜像，含 ffmpeg、依赖安装、自托管前端与 `/app/data` 数据卷。
-- `docker-compose.yaml`：单服务编排，端口 `12580`、环境变量 `DY_COOKIE`、挂载 `./data:/app/data`。
-- `.dockerignore`：排除 `archive/`、`_agent/`、`tests/`、`.venv/`、运行时配置与录制产物。
+- `docker-compose.yaml`：单服务编排，端口 `12580`、环境变量 `DY_COOKIE`、挂载 `../data:/app/data`。
+- 仓库根 `.dockerignore`：排除 `archive/`、`_agent/`、`tests/`、`.venv/`、运行时配置与录制产物（Docker 构建上下文忽略文件须置于仓库根）。
 
 ## 构建与启动
 
+> 因 compose 已归入 `deploy/docker/`，在**仓库根**执行时须用 `-f` 指定路径；构建上下文仍为仓库根（含 `src/`、`requirements.txt`）。
+
 ```bash
 # 基础启动
-docker compose up -d --build
+docker compose -f deploy/docker/docker-compose.yaml up -d --build
 
 # 注入 Cookie（可选，不写文件；提升拉流/弹幕稳定性）
-DY_COOKIE="<你的cookie>" docker compose up -d --build
+DY_COOKIE="<你的cookie>" docker compose -f deploy/docker/docker-compose.yaml up -d --build
 ```
 
 启动后访问：
@@ -28,12 +30,12 @@ DY_COOKIE="<你的cookie>" docker compose up -d --build
 
 ## 数据持久化
 
-`./data` 挂载到容器内 `/app/data`：
+`../data`（即仓库根 `data/`）挂载到容器内 `/app/data`：
 
 - `config.yaml` / `rooms.yaml`：首次运行自愈生成，之后由管理页修改并落盘。
 - `recordings/`：录制产出（视频 MP4 + 弹幕 JSONL + 汇总）。
 
-升级镜像（`docker compose up -d --build`）不会删除 `./data`，配置与历史录制保留。
+升级镜像（`docker compose -f deploy/docker/docker-compose.yaml up -d --build`）不会删除 `../data`，配置与历史录制保留。
 
 ## 说明
 

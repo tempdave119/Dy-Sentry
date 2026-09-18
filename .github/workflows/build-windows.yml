@@ -42,6 +42,7 @@ jobs:
           "Downloaded ffmpeg -> bin/ffmpeg.exe"
 
       - name: PyInstaller build
+        working-directory: deploy/windows
         run: pyinstaller dy-sentry.spec --clean --noconfirm
 
       - name: Install Inno Setup
@@ -58,6 +59,7 @@ jobs:
           "Version: $tag"
 
       - name: Build installer (version injected)
+        working-directory: deploy/windows
         shell: pwsh
         run: |
           $iscc = (Get-ChildItem "C:\Program Files (x86)\Inno Setup 6" -Filter ISCC.exe -Recurse | Select-Object -First 1).FullName
@@ -68,6 +70,6 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: Dy-Sentry-${{ steps.ver.outputs.version }}-Setup
-          path: installer_output/*.exe
+          path: deploy/windows/installer_output/*.exe
           if-no-files-found: error
           retention-days: 90

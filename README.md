@@ -25,7 +25,7 @@ Dy-Sentry 是一套个人向的录制 / 监控工具，解决两个核心痛点�
 ## 相关文档
 
 - [架构设计 `docs/architecture.md`](./docs/architecture.md)：模块划分、核心数据流、纯 Python 签名方案与关键技术决策。
-- [容器化 `DOCKER.md`](./DOCKER.md)：Docker / Compose 部署与数据持久化。
+- [容器化 `DOCKER.md`](./deploy/docker/DOCKER.md)：Docker / Compose 部署与数据持久化。
 
 ## 快速开始
 
@@ -33,14 +33,14 @@ Dy-Sentry 是一套个人向的录制 / 监控工具，解决两个核心痛点�
 
 ### 方式 A：Docker（推荐常驻 / 服务器）
 
-详见 [`DOCKER.md`](./DOCKER.md)。
+详见 [`DOCKER.md`](./deploy/docker/DOCKER.md)。
 
 ```bash
 # 基础启动
-docker compose up -d --build
+docker compose -f deploy/docker/docker-compose.yaml up -d --build
 
 # 注入 Cookie（可选，提升拉流 / 弹幕稳定性，仅经环境变量进进程，不落盘）
-DY_COOKIE="<你的cookie>" docker compose up -d --build
+DY_COOKIE="<你的cookie>" docker compose -f deploy/docker/docker-compose.yaml up -d --build
 ```
 
 启动后访问：
@@ -112,7 +112,7 @@ build.bat
 
 脚本会自动下载 ffmpeg 并产出 `dist\dy-sentry\` 与 `installer_output\Dy-Sentry-*-Setup.exe`。
 
-关键文件：`dy-sentry.spec`（PyInstaller 配置）、`installer.iss`（Inno Setup 脚本）、`launcher.bat`（启动器）。
+关键文件：`deploy/windows/dy-sentry.spec`（PyInstaller 配置）、`deploy/windows/installer.iss`（Inno Setup 脚本）、`deploy/windows/launcher.bat`（启动器）。
 
 ---
 

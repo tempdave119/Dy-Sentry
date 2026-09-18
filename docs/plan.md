@@ -107,7 +107,7 @@
 - **依赖**：M1–M4
 
 ### M6 — 容器化（已完成）
-- 6.1 Dockerfile + docker-compose（对标 `DLR`/`SREC`/`STREAM1`）：已落地，`docker compose up -d --build` 一键部署
+- 6.1 Dockerfile + docker-compose（对标 `DLR`/`SREC`/`STREAM1`）：已落地，`docker compose -f deploy/docker/docker-compose.yaml up -d --build` 一键部署
 - 6.2 ffmpeg 随镜像安装（apt），运行入口 `uvicorn api.app:app --port 12580`
 - **依赖**：M5
 
