@@ -1,6 +1,6 @@
 # Dy-Sentry 架构方案
 
-> 状态：草案 v1（2026-09-18）。本文档为 Dy-Sentry 的正式架构产出，落档前经用户确认。
+> 状态：已落地（M1–M7 完成，2026-09-19）。设计草案 v1 写于 2026-09-18，下方已按最终实现校正签名与依赖（纯 Python、零 JS 引擎）。使用方式见根目录 [`README.md`](../README.md)。
 >
 > 命名约束：项目所有文件统一用「Dy」指代目标平台，不出现平台全名。下文引用的只读存档以其外部仓库名存在于 `archive/`，本文一律用缩写指代，不拼写全名：
 > - `DANMU` = 自研历史项目（纯弹幕录制，含分时段轮询调度）
@@ -36,11 +36,11 @@
 | 前端 | 轻量 SPA + **mpegts.js / flv.js** 播放器 | 对标 `SREC` 的 `/player`、`DLR` 的 `index.html`；播放 FLV/HLS。 |
 | 拉流录制 | **ffmpeg**（外部依赖） | 直接复制 `-c copy` 转封装，无损、不转码。 |
 | 弹幕 | `websockets` + `betterproto` | WS 长连 + Protobuf 解码。 |
-| 签名 | HTTP=`a_bogus`（纯 Python）；弹幕 WS=`PyMiniRacer`(V8)+`sign.js` | 见 §5。 |
+| 签名 | HTTP=`a_bogus`（纯 Python）；弹幕 WS=`X-Bogus`（纯 Python） | 见 §5，零 JS 引擎。 |
 | 配置 | **YAML 或 TOML** | 取代存档的中文键 INI；干净 schema、可校验。 |
 | 日志 | `loguru` | 轻量、分级落盘。 |
 
-依赖清单（首期）：`httpx websockets betterproto py-mini-racer fastapi uvicorn loguru pyyaml`（或 `tomli`）+ 外部 `ffmpeg`。
+依赖清单：`httpx websockets betterproto fastapi uvicorn loguru pyyaml certifi` + 外部 `ffmpeg`（签名均为纯 Python，无 JS 引擎依赖）。
 **显式弃用**：`PyExecJS` / Node.js（`DLR` 仅为非 Dy 平台才需要，Dy 路径用纯 Python a_bogus，无需 V8 之外的任何 JS 引擎）。
 
 ---
@@ -52,7 +52,7 @@ Dy-Sentry/
 ├─ src/
 │  ├─ core/
 │  │   ├─ ab_sign.py        # a_bogus 纯 Python（HTTP API 签名）— 移植自 DLR/STREAM1
-│  │   ├─ ws_signer.py      # X-Bogus（弹幕 WS 签名）= PyMiniRacer + sign.js — 移植自 DANMU
+│  │   ├─ ws_signer.py      # X-Bogus（弹幕 WS 签名）纯 Python，移植自 SREC signature.rs
 │  │   ├─ fetcher.py        # Dy 房间信息/开播状态/拉流地址，三级回退 — 移植重写
 │  │   └─ proto/            # 弹幕 .proto + betterproto 生成码 — 移植自 DANMU/STREAM1
 │  ├─ capture/
@@ -201,7 +201,7 @@ rooms:
 | 能力 | 来源（缩写:路径） | 处置 |
 |---|---|---|
 | a_bogus HTTP 签名 | `DLR:src/ab_sign.py`、`STREAM1:ab_sign.py` | 移植（纯 Python，零依赖） |
-| 弹幕 WS 签名 | `DANMU:src/signer.py` + `js/sign.js` | 移植，sign.js 设为可热替换资产 |
+| 弹幕 WS 签名 | `DANMU:src/signer.py` + `js/sign.js` | 移植为纯 Python（`ws_signer.py`），sign.js / V8 已弃用 |
 | Protobuf 弹幕解析 | `DANMU:protobuf/`、`STREAM1:protobuf/` | 移植 |
 | Dy 拉流/房间信息 | `DLR:src/spider.py`(Dy 三入口)、`DLR:src/stream.py`、`DLR:src/room.py` | 移植重写（三级回退、ORIGIN 前置、清晰度探测） |
 | ffmpeg 视频录制 | `DLR:main.py`(ffmpeg 参数/h265 回退)、`STREAM1:recorder.py`(分片/转封装) | 移植并修 bug（URL 刷新、清晰度接线、Windows 停止） |
@@ -244,8 +244,8 @@ rooms:
 
 ## 12. 待确认 / 开放问题
 
-- 配置格式最终选 YAML 还是 TOML。
-- 前端形态：原生 + mpegts/flv.js 静态页，还是引入轻框架（如 Vue/React）。
-- 鉴权：Web UI 是否需要登录（对标 `SREC` 的 JWT）。
-- 部署：是否提供 Docker（`DLR`/`SREC`/`STREAM1` 均有）。
-- 弹幕 X-Bogus 是否可能存在纯 Python 实现，从而彻底去掉 V8（待调研，当前以 sign.js 为基线）。
+- 配置格式：已定 **YAML**（`config.yaml` / `rooms.yaml`，自愈 + 热重载）。
+- 前端形态：原生静态页 + 自托管 `mpegts.js`（无框架，无第三方 CDN）。
+- 鉴权：Web UI 暂不加登录（个人自用，后续可加）。
+- 部署：已提供 Docker（`DOCKER.md`）与 Windows 安装包（Inno Setup，CI 自动构建）。
+- 弹幕 X-Bogus 纯 Python 实现——**已落地**（见 §5）；V8 / `py-mini-racer` / `sign.js` 已彻底移除，打包无需收集原生 dll。

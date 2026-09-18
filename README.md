@@ -22,6 +22,11 @@ Dy-Sentry 是一套个人向的录制 / 监控工具，解决两个核心痛点�
 
 ---
 
+## 相关文档
+
+- [架构设计 `docs/architecture.md`](./docs/architecture.md)：模块划分、核心数据流、纯 Python 签名方案与关键技术决策。
+- [容器化 `DOCKER.md`](./DOCKER.md)：Docker / Compose 部署与数据持久化。
+
 ## 快速开始
 
 服务默认端口 **`12580`**。三种运行方式任选其一。
