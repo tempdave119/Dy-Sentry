@@ -33,6 +33,10 @@ htmlcov/
 /installer_output/
 /bin/
 .pyinstaller/
+deploy/windows/dist/
+desktop/src-tauri/target/
+desktop/binaries/*
+!desktop/binaries/.gitignore
 
 # 系统文件
 .DS_Store

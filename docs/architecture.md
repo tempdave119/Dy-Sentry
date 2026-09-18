@@ -237,6 +237,9 @@ rooms:
 | **M3** 视频录制 | `capture/video_recorder.py`，ffmpeg 拉流+转封装+分片+h265 回退，修 URL 刷新/清晰度 | 开播自动录制，文件完整可播，清晰度可选 |
 | **M4** 弹幕录制 | `capture/danmaku_recorder.py` + `core/ws_signer`，WS+protobuf+重连 | 弹幕完整落 JSONL，断线自动恢复 |
 | **M5** Web UI 整合 | 房间管理 / 调度配置 / 实时状态 / 预览播放器 | 全流程可在 UI 操作与观测 |
+| **M6** 容器化 | `Dockerfile` + `docker-compose.yaml` + `DOCKER.md` | `docker compose up -d --build` 可起服务并持久化数据 |
+| **M7** Windows 安装包 | PyInstaller `dy-sentry.spec` + Inno Setup `installer.iss` + `build.bat` + CI | 推 `v*` tag 出 `Dy-Sentry-vX.Y.Z-Setup.exe` |
+| **M8** 桌面客户端（Tauri） | Rust 外壳（`desktop/`）把 Python 后端作 sidecar 启动，webview 加载管理页，带启动屏 / 托盘 / 单实例 / 优雅退出 | 推 `v*` tag 出 NSIS 桌面安装包；双击打开原生窗口，无需访问 localhost |
 
 每个里程碑完成并验证后才更新 `ROADMAP.md` 的「已完成」。
 
@@ -247,5 +250,38 @@ rooms:
 - 配置格式：已定 **YAML**（`config.yaml` / `rooms.yaml`，自愈 + 热重载）。
 - 前端形态：原生静态页 + 自托管 `mpegts.js`（无框架，无第三方 CDN）。
 - 鉴权：Web UI 暂不加登录（个人自用，后续可加）。
-- 部署：已提供 Docker（`DOCKER.md`）与 Windows 安装包（Inno Setup，CI 自动构建）。
+- 部署：已提供 Docker（`DOCKER.md`）、Windows 安装包（Inno Setup，CI 自动构建），以及 **桌面客户端**（Tauri 外壳 + 内置 Python 后端 sidecar，CI 构建 NSIS 安装包，见 §13）。
 - 弹幕 X-Bogus 纯 Python 实现——**已落地**（见 §5）；V8 / `py-mini-racer` / `sign.js` 已彻底移除，打包无需收集原生 dll。
+
+---
+
+## 13. 桌面客户端（M8，Tauri）
+
+> 用户需要的是**独立客户端**，而非「本地起服务再开 localhost 浏览器」。参考存档 `rust-srec` 的 Tauri 架构实现。
+
+### 13.1 运行模型（对齐 rust-srec，后端为 sidecar 而非 in-process）
+
+`rust-srec` 的 Tauri 外壳把 Rust 后端 **in-process** 启动、webview 加载构建好的前端、注入后端地址；Dy-Sentry 后端是 Python，无法直接塞进 Rust，因此改为把 PyInstaller 冻结的 Python 后端作为 **Tauri sidecar** 启动，webview 直接加载后端提供的页面。流程：
+
+1. 启动显示启动屏（加载 `desktop/frontend/index.html`）；
+2. 以 Tauri app data 目录为 `cwd` 拉起 Python 后端（`dy-sentry.exe`，即 `run.py` 的 uvicorn 服务）作为 sidecar；
+3. 轮询 `127.0.0.1:12580/health`（新增于 `src/api/app.py`），就绪后打开主窗口指向 `http://127.0.0.1:12580/manage`（监控 / 录制核心）；
+4. 系统托盘、单实例（第二次启动聚焦已有窗口）、关闭最小化到托盘；退出时杀掉 sidecar 进程树（含 ffmpeg 子进程）。
+
+### 13.2 目录与关键文件
+
+- `desktop/src-tauri/tauri.conf.json`：`productName` / `identifier` / `bundle.targets=["nsis"]` / `externalBin: ["../binaries/dy-sentry"]` / `security.csp` 放行 `127.0.0.1:*`。
+- `desktop/src-tauri/src/lib.rs`：启动、sidecar 拉起、端口轮询、主窗口、托盘、单实例、优雅退出。
+- `desktop/src-tauri/capabilities/default.json`：窗口 `main`/`splash` 的权限（`shell:allow-execute` 等）。
+- `desktop/src-tauri/frontend/index.html`：启动屏。
+- `desktop/binaries/`：CI 构建期放入 `dy-sentry-x86_64-pc-windows-msvc.exe`（PyInstaller 产物重命名），不进仓库。
+
+### 13.3 数据落点与前端
+
+- sidecar `cwd` = Tauri app data 目录 → `config.yaml` / `rooms.yaml` / `recordings/` 落于应用数据目录，升级不丢。
+- 前端复用现有 `src/web`（管理页 / 预览页），webview **直接加载后端页面**（同源，无需改前端）；**默认进管理页，预览作为次级入口**——呼应「监控+录制是核心，直播预览只是场景之一」。
+
+### 13.4 构建与边界
+
+- CI `.github/workflows/build-desktop.yml`（windows-latest）：PyInstaller 出 sidecar → 重命名放入 `desktop/binaries/` → `cargo tauri build` 出 NSIS 安装包。
+- 本机 macOS 无法本地验证 Tauri 构建（无 Rust / Windows 工具链），以 CI 为准；产物未做代码签名，Windows SmartScreen 可能告警（需 EV 证书 + secrets 可后续补）。

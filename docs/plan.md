@@ -118,6 +118,17 @@
 - 7.4 `src/capture/video_recorder.py` 增加 `_ffmpeg_bin()`/`_ffmpeg_available()`，优先从 `_MEIPASS`/exe 同级解析 ffmpeg，向后兼容 PATH
 - **依赖**：M6
 
+### M8 — 桌面客户端（Tauri，配置就绪 / 待 CI 验证）
+- 8.1 需求：用户要**独立客户端**（双击打开原生窗口、不访问 localhost），而非「本地起服务再开浏览器」。参考存档 `rust-srec` 的 Tauri 架构。
+- 8.2 `desktop/src-tauri/`：Rust 外壳（`Cargo.toml` / `build.rs` / `tauri.conf.json` / `capabilities/default.json` / `src/main.rs` / `src/lib.rs`），`externalBin` 指向 `desktop/binaries/dy-sentry`，`bundle.targets=["nsis"]`。
+- 8.3 运行模型：启动屏 → 以 app data 目录为 `cwd` 拉起 PyInstaller 冻结的 Python 后端作 sidecar → 轮询 `/health` 就绪后打开主窗口指向 `/manage`（监控/录制核心）→ 托盘 / 单实例 / 关闭最小化到托盘 / 退出杀掉 sidecar 进程树（含 ffmpeg）。
+- 8.4 `src/api/app.py` 新增 `GET /health`（启动屏探测后端就绪）。
+- 8.5 `desktop/frontend/index.html` 启动屏；`desktop/binaries/` 放 CI 期生成的 `dy-sentry-x86_64-pc-windows-msvc.exe`（gitignore）。
+- 8.6 `.github/workflows/build-desktop.yml`：`windows-latest` 先 PyInstaller 出 sidecar → 重命名放入 `desktop/binaries/` → `cargo tauri build` 出 NSIS 安装包（版本随 tag 注入）。
+- 8.7 前端复用现有 `src/web`，webview 直接加载后端页面（同源）；默认进管理页，预览为次级入口——**监控+录制是核心，直播预览只是场景之一**。
+- **依赖**：M7
+- **边界**：本机 macOS 无法本地验证 Tauri 构建（无 Rust/Windows），以 CI 为准；产物未签名，SmartScreen 可能告警。
+
 ---
 
 ## E. 风险与缓解

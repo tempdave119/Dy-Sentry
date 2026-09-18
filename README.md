@@ -18,7 +18,7 @@ Dy-Sentry 是一套个人向的录制 / 监控工具，解决两个核心痛点�
 - 🖥️ **浏览器预览**：自托管 `mpegts.js`，`/api/preview` 后端代理 FLV，无第三方 CDN 依赖。
 - ⚙️ **管理后台**：`/manage` 可视化管理全局设置、房间增删改、逐房间开关（录制 / 弹幕 / 清晰度 / 调度）。
 - 🔐 **纯 Python 签名**：`a_bogus` 与弹幕 `X-Bogus` 均为纯 Python 实现，**不依赖 V8 / Node.js / py-mini-racer**。
-- 📦 **两种部署形态**：Docker 容器（`docker compose`）或 Windows 安装包（Inno Setup，CI 自动构建）。
+- 📦 **三种部署形态**：Docker 容器（`docker compose`）、Windows **桌面客户端**（Tauri 外壳 + 内置后端，双击即用、无需访问 localhost），或 Windows 服务安装包（Inno Setup，CI 自动构建）。
 
 ---
 
@@ -29,7 +29,7 @@ Dy-Sentry 是一套个人向的录制 / 监控工具，解决两个核心痛点�
 
 ## 快速开始
 
-服务默认端口 **`12580`**。三种运行方式任选其一。
+服务默认端口 **`12580`**。四种运行方式任选其一。
 
 ### 方式 A：Docker（推荐常驻 / 服务器）
 
@@ -48,18 +48,24 @@ DY_COOKIE="<你的cookie>" docker compose -f deploy/docker/docker-compose.yaml u
 - 预览页 <http://localhost:12580/>
 - 管理页 <http://localhost:12580/manage>
 
-### 方式 B：Windows 安装包
+### 方式 B：桌面客户端（Tauri，推荐）🖥️
 
-在 GitHub **Releases / Actions 产物**下载 `Dy-Sentry-vX.Y.Z-Setup.exe`，一路下一步安装（默认装到 `%LOCALAPPDATA%\Dy-Sentry`，无需管理员权限）。
+双击安装得到的是**原生桌面应用**：启动即打开原生窗口（默认进入「管理 / 监控」页），内置 Python 后端作为 sidecar 在后台运行，**用户无需手动访问 localhost 地址**。直播预览 / 弹幕只是窗口内的一个次级入口（「预览」标签）——**监控与录制才是核心**。
+
+> 桌面客户端由 CI 自动构建：推送 `v*` tag 触发 `.github/workflows/build-desktop.yml`，在 `windows-latest` 上完成 PyInstaller（后端 sidecar）+ Tauri（外壳）打包，产出 NSIS 安装包 `Dy-Sentry-x.y.z-x64-setup.exe`。详见下方「构建」。
+
+### 方式 C：Windows 服务安装包（Inno Setup）
+
+在 GitHub **Actions 产物**下载 `Dy-Sentry-vX.Y.Z-Setup.exe`，一路下一步安装（默认装到 `%LOCALAPPDATA%\Dy-Sentry`，无需管理员权限）。
 
 安装完成后：
 
 - 桌面 / 开始菜单「启动 Dy-Sentry」快捷方式会启动服务并自动打开预览页；
 - 或在安装目录双击 `launcher.bat`。
 
-> 安装包由 CI 自动构建：推送 `v*` tag 即在 `windows-latest` runner 上完成 PyInstaller 冻结 + Inno Setup 打包。详见下方「构建」。
+> 该安装包由旧版 CI（`.github/workflows/build-windows.yml`）构建，偏向「服务 + 浏览器访问 localhost」形态；新项目推荐用方式 B 桌面客户端。
 
-### 方式 C：源码直接运行
+### 方式 D：源码直接运行
 
 ```bash
 python -m pip install -r requirements.txt
@@ -90,29 +96,33 @@ python run.py                # 等价于 PYTHONPATH=src uvicorn api.app:app --po
 
 ## 构建（从源码出安装包）
 
-> 本机为 macOS 时 **PyInstaller 不支持跨平台编译**，请用下面任一种方式在 Windows 环境构建。
+> 本机为 macOS 时 **PyInstaller / Tauri 均不支持跨平台编译**，请在 Windows 环境构建（GitHub Actions 已自动化）。
 
-### 自动构建（推荐）
+### 1) 桌面客户端（Tauri，推荐）
 
-推送版本 tag 触发 GitHub Actions（`.github/workflows/build-windows.yml`，运行于 `windows-latest`）：
+推送版本 tag 触发 `.github/workflows/build-desktop.yml`（运行于 `windows-latest`）：
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-工作流完成：装依赖 → 下载 Windows 版 ffmpeg → PyInstaller 冻结 → Inno Setup 打包，产物 `Dy-Sentry-v0.1.0-Setup.exe` 作为 artifact 上传（版本号自动从 tag 注入安装包）。
+工作流完成：装 Python 依赖 → 下载 ffmpeg → PyInstaller 冻结后端为 sidecar → `cargo tauri build` 打包外壳 + NSIS 安装包，产物 `Dy-Sentry-x.y.z-x64-setup.exe` 作为 artifact 上传（版本号自动从 tag 注入）。
+
+关键文件：`desktop/`（Tauri 外壳：`src-tauri/` Rust 代码、`tauri.conf.json`、`frontend/` 启动屏）、`deploy/windows/dy-sentry.spec`（后端 PyInstaller 配置）。
+
+### 2) Windows 服务安装包（Inno Setup，旧形态）
+
+同推 `v*` tag 触发 `.github/workflows/build-windows.yml`：PyInstaller 冻结 + Inno Setup 打包，产物 `Dy-Sentry-vX.Y.Z-Setup.exe`。偏向「服务 + 浏览器访问 localhost」形态。
 
 ### 本地 Windows 一键构建
 
-在本机 Windows 上：
+在本机 Windows 上可构建旧形态安装包：
 
 ```bat
 build.bat
 ```
 
-脚本会自动下载 ffmpeg 并产出 `dist\dy-sentry\` 与 `installer_output\Dy-Sentry-*-Setup.exe`。
-
-关键文件：`deploy/windows/dy-sentry.spec`（PyInstaller 配置）、`deploy/windows/installer.iss`（Inno Setup 脚本）、`deploy/windows/launcher.bat`（启动器）。
+脚本会自动下载 ffmpeg 并产出 `dist\dy-sentry\` 与 `installer_output\Dy-Sentry-*-Setup.exe`。桌面客户端（Tauri）的本地构建需 Rust 工具链：在 `desktop/src-tauri` 执行 `cargo tauri build`（需先把 PyInstaller 产物重命名为 `desktop/binaries/dy-sentry-x86_64-pc-windows-msvc.exe`）。
 
 ---
 
@@ -129,9 +139,9 @@ python -m pytest -q        # 累计 49/49 单测
 
 ## 项目状态
 
-- 里程碑 **M1–M7** 全部完成或配置就绪：监控调度、视频录制、弹幕、Web UI 整合与录制闭环、Docker 容器化、Windows 安装包。
+- 里程碑 **M1–M7** 全部完成：监控调度、视频录制、弹幕、Web UI 整合与录制闭环、Docker 容器化、Windows 安装包（PyInstaller + Inno Setup）。
+- **M8 桌面客户端（Tauri）已配置**：Rust 外壳把 Python 后端作 sidecar 启动、webview 加载管理页、带启动屏 / 托盘 / 单实例 / 优雅退出；CI 工作流 `build-desktop.yml` 已就绪，**待 CI 首次构建验证产出 NSIS 安装包**。
 - 核心闭环已真实验收（开播自动录视频 + 弹幕，停播优雅转封装 MP4 + 弹幕汇总）；累计单测 **49/49**。
-- M7 安装包配置已就绪，待 CI 首次构建验证产出 `Dy-Sentry Setup.exe`。
 
 ---
 

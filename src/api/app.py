@@ -73,6 +73,11 @@ def build_app(config_path: str = "config.yaml", rooms_path: str = "rooms.yaml") 
     async def manage() -> FileResponse:
         return FileResponse(WEB_DIR / "manage.html")
 
+    @app.get("/health")
+    async def health() -> JSONResponse:
+        # 供桌面客户端启动屏轮询：返回 200 即表示后端已就绪（端口监听成功）。
+        return JSONResponse({"status": "ok", "version": app.version})
+
     @app.get("/api/status")
     async def status(
         url: str = Query(..., description="Dy 直播间 URL，如 https://live.douyin.com/<web_rid>"),

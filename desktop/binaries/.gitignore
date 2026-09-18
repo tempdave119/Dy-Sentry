@@ -1,0 +1,5 @@
+# 桌面 sidecar 二进制由 CI 构建后放入此目录（PyInstaller 产物重命名为目标三元名）。
+# 例如：dy-sentry-x86_64-pc-windows-msvc.exe
+# 本地不提交；CI 在 tauri build 前生成。
+*
+!.gitignore
