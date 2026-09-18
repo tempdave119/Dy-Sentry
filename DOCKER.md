@@ -1,5 +1,7 @@
 # Dy-Sentry 容器化（M6）
 
+> 总览与快速开始见根目录 [`README.md`](./README.md)。
+
 M1–M5 已完成并真实验收，M6 提供 Docker 容器化，便于一键部署与升级。
 镜像基于 `python:3.12-slim`，并安装系统 `ffmpeg`（视频录制运行时依赖）。
 
