@@ -24,6 +24,7 @@ htmlcov/
 /config.yaml
 /rooms.yaml
 /recordings/
+/data/
 *.log
 
 # 系统文件

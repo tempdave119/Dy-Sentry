@@ -1,0 +1,25 @@
+# Dy-Sentry 容器编排（M6）
+#
+# 构建并启动：
+#   docker compose up -d --build
+# 注入 Cookie（可选，提升拉流/弹幕稳定性，不写文件）：
+#   DY_COOKIE="<你的cookie>" docker compose up -d --build
+#
+# 访问：
+#   预览页   http://localhost:12580/
+#   管理页   http://localhost:12580/manage
+#
+# 数据持久化：./data 挂载到容器内 /app/data，存放自愈生成的 config.yaml/rooms.yaml
+#            与录制产出 recordings/；升级镜像后数据不丢。
+services:
+  dy-sentry:
+    build: .
+    image: dy-sentry:latest
+    container_name: dy-sentry
+    ports:
+      - "12580:12580"
+    environment:
+      DY_COOKIE: "${DY_COOKIE:-}"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

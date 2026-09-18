@@ -1,0 +1,20 @@
+# 不进入 Docker 构建上下文
+.git/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+archive/
+_agent/
+tests/
+*.egg-info/
+
+# 运行时产物（容器内由卷挂载，构建无需，且可能含敏感配置）
+/recordings/
+/config.yaml
+/rooms.yaml
+.env
+.env.*
+.DS_Store
