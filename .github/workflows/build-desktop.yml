@@ -94,7 +94,10 @@ jobs:
           workspaces: desktop/src-tauri
 
       - name: Install NSIS (bundler)
-        run: choco install nsis -y
+        run: |
+          choco install nsis -y
+          # choco 不一定把 NSIS 写入后续步骤的 PATH，显式追加以确保 makensis 可被 cargo tauri build 找到
+          echo "C:\Program Files (x86)\NSIS" >> "$GITHUB_PATH"
 
       - name: Install tauri-cli
         run: cargo install tauri-cli --version "^2" --locked

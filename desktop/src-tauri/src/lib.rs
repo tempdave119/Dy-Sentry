@@ -146,6 +146,7 @@ pub fn run() {
                         .title("Dy-Sentry")
                         .inner_size(1280.0, 900.0)
                         .min_inner_size(860.0, 600.0)
+                        .visible(false)
                         .build();
                     }
                 } else {
