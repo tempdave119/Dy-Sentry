@@ -1,6 +1,6 @@
 # Dy-Sentry 项目规划与报告
 
-> 状态：v1（2026-09-18）。配套设计文档见 `docs/architecture.md`。
+> 状态：已落地（M1–M7 完成，2026-09-19）。配套设计文档见 `docs/architecture.md`（已校正至纯 Python 实现）。
 > 命名约束：全文用「Dy」指代目标平台；存档用缩写 `DANMU`/`STREAM1`/`DLR`/`SREC`，不拼平台全名。
 
 ---
@@ -23,11 +23,11 @@
 | `DANMU` | 自研·弹幕 | **分房间分时段轮询**（痛点2 唯一现成实现）、protobuf 弹幕管线、V8 弹幕签名、JSONL/HTML/摘要输出 | 无视频、无 Web、弹幕无重连、源码模式路径损坏 |
 | `STREAM1` | 自研·半成品 | 模块化拆分、ffmpeg 视频录制+分片+转封装 | URL 不刷新（无限重启）、清晰度死代码、全局固定间隔、无 Web |
 | `DLR` | 第三方·血缘源头 | **纯 Python a_bogus 签名**、Dy 拉流三级回退、ORIGIN 原画前置、清晰度探测降级、ffmpeg 参数+h265→TS 回退、jitter/退避启发式、自愈+备份配置 | 全局固定间隔、无弹幕、无 HTTP 服务（index.html 静态不能设头） |
-| `SREC` | 第三方·在用 | 架构对标：`/player` 预览、`filters` 调度、REST API+OpenAPI+JWT+health、Web UI | 体量大、Rust、签名改不动 |
+| `SREC` | 第三方·在用 | 架构对标：`/player` 预览、`filters` 调度、REST API+OpenAPI+JWT+health、Web UI；**纯 Python `signature.rs` 弹幕 X-Bogus** | 体量大、Rust、签名改不动 |
 
 ### A3. 核心判断
 - **痛点2 几乎零风险**：`DANMU` 已有成熟实现，直接移植。
-- **痛点1 可自维护**：HTTP 签名走纯 Python a_bogus（改算法只动一个文件），预览走后端代理注入头——两者都绕开了 `SREC` 改不动的 Rust 引擎。
+- **痛点1 可自维护**：HTTP 签名走纯 Python a_bogus（改算法只动一个文件），预览走后端代理注入头——两者都绕开了 `SREC` 改不动的 Rust 引擎。弹幕签名同理移植 `SREC` 的纯 Python `signature.rs`，同样无需 JS 引擎。
 - **新建轻量 Dy-only 工具是正确路线**：复用四存档的高价值资产，重写不适配 Web/异步的监控-配置-入口层。
 
 ---
@@ -39,8 +39,8 @@
 | 1 | 配置格式 | **YAML** | 房间配置含嵌套（per-room poll_schedule、视频/弹幕子项），YAML 对嵌套+注释更友好；TOML 的 array-of-tables 写多房间更啰嗦。用 `PyYAML`。 |
 | 2 | 前端形态 | **首期原生静态页 + mpegts.js/flv.js**，不引入构建链 | 符合「精简」诉求、单人维护、首期 UI 仅房间管理+调度+预览+状态，复杂度低。UI 明显变复杂时再评估轻框架。 |
 | 3 | Web 鉴权 | **默认本地无鉴权；提供可选 token 开关** | 对标 `SREC` 的 JWT 偏重；首期本地访问为主，暴露到网络时启用简单 token 即可。 |
-| 4 | Docker | **提供 Dockerfile + compose，排在 M5 之后** | 三参考项目均有、部署方便；但首期先本地跑通，容器化不阻塞主线。 |
-| 5 | X-Bogus 纯 Python | **延后调研，首期以 sign.js+V8 为基线** | V8 方案已在 `DANMU` 验证可用，不阻塞；去 V8 是优化项，M4 后有余力再调研。 |
+| 4 | Docker | **已完成（M6）：Dockerfile + compose** | 三参考项目均有、部署方便；先本地跑通，M6 容器化已落地。另提供 Windows 安装包（M7，PyInstaller + Inno Setup，GitHub Actions `windows-latest` 原生构建）。 |
+| 5 | X-Bogus 纯 Python | **已实现纯 Python，V8/sign.js 弃用** | 移植自 SREC `signature.rs`（`core/ws_signer.py`，RC4 + 自定义 base64），无需 JS 引擎；`py-mini-racer`/`PyExecJS`/`Node` 全部弃用，跨平台打包零原生依赖。 |
 
 ---
 
@@ -51,10 +51,10 @@
 - 前端：原生静态页 + mpegts.js/flv.js
 - 拉流录制：ffmpeg（外部）
 - 弹幕：websockets + betterproto
-- 签名：HTTP=a_bogus（纯 Python）；弹幕 WS=PyMiniRacer+sign.js
+- 签名：HTTP=`a_bogus`（纯 Python）；弹幕 WS=X-Bogus（纯 Python，移植自 SREC `signature.rs`，无需 V8/sign.js）
 - 配置：YAML（PyYAML）
 - 日志：loguru
-- 依赖：`httpx websockets betterproto py-mini-racer fastapi uvicorn loguru pyyaml` + 外部 `ffmpeg`；弃用 `PyExecJS`/Node
+- 依赖：`httpx certifi websockets betterproto fastapi uvicorn loguru pyyaml` + 外部 `ffmpeg`；`PyExecJS`/`Node`/`py-mini-racer`(V8) 显式弃用（签名纯 Python 化后无原生依赖）
 
 ---
 
@@ -89,7 +89,7 @@
 - **依赖**：M2
 
 ### M4 — 弹幕录制
-- 4.1 `core/ws_signer.py`：PyMiniRacer + sign.js（X-Bogus），sign.js 设为可热替换资产 + 版本记录
+- 4.1 `core/ws_signer.py`：X-Bogus 纯 Python 实现（RC4 + 自定义 base64，移植自 SREC `signature.rs`），无需 V8/sign.js
 - 4.2 `capture/danmaku_recorder.py`：WS 连接 + protobuf 解码（移植 `DANMU`/`STREAM1` proto）→ JSONL + 摘要
 - 4.3 **新增断线重连**：心跳 + 指数退避 + 存活探测（补两存档缺陷）
 - 4.4 动态生成设备 id/时间戳，去硬编码
@@ -106,10 +106,17 @@
 - **验收**：全流程可在 UI 操作与观测
 - **依赖**：M1–M4
 
-### M6（可选）— 容器化
-- 6.1 Dockerfile + docker-compose（对标 `DLR`/`SREC`/`STREAM1`）
-- 6.2 ffmpeg 安装/检测脚本
+### M6 — 容器化（已完成）
+- 6.1 Dockerfile + docker-compose（对标 `DLR`/`SREC`/`STREAM1`）：已落地，`docker compose up -d --build` 一键部署
+- 6.2 ffmpeg 随镜像安装（apt），运行入口 `uvicorn api.app:app --port 12580`
 - **依赖**：M5
+
+### M7 — Windows 安装包（已完成）
+- 7.1 `run.py` 冻结入口 + `dy-sentry.spec`（PyInstaller onedir），打包 `src/web/` 与 `ffmpeg.exe`
+- 7.2 `installer.iss`（Inno Setup）→ `Dy-Sentry Setup.exe`，装到 `%LOCALAPPDATA%\Dy-Sentry`
+- 7.3 `.github/workflows/build-windows.yml`：`windows-latest` 原生构建，推 `v*` tag 出带版本号安装包（仅 artifact，不挂 Release）
+- 7.4 `src/capture/video_recorder.py` 增加 `_ffmpeg_bin()`/`_ffmpeg_available()`，优先从 `_MEIPASS`/exe 同级解析 ffmpeg，向后兼容 PATH
+- **依赖**：M6
 
 ---
 
@@ -117,8 +124,8 @@
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
-| Dy 再次更新签名算法 | 拉流或弹幕中断 | 签名集中在 `core/`，HTTP 改 `ab_sign.py`、WS 换 `sign.js`；文档化修复点；M1/M4 各做签名单测便于快速定位 |
-| V8（PyMiniRacer）平台兼容 | 弹幕签名不可用 | 仅弹幕依赖；延后调研纯 Python X-Bogus 作退路 |
+| Dy 再次更新签名算法 | 拉流或弹幕中断 | 签名集中在 `core/`，HTTP 改 `ab_sign.py`、WS 改 `ws_signer.py`；文档化修复点；M1/M4 各做签名单测便于快速定位 |
+| （已消除）弹幕签名原生依赖 | 历史上 V8/PyMiniRacer 平台兼容风险 | 已实现纯 Python X-Bogus，移除全部 JS 引擎依赖，跨平台打包无障碍 |
 | 流地址 header-gated | 预览/录制失败 | 后端代理统一注入 Referer/Cookie，不让前端直链 |
 | h265 流容器不兼容 | 录制文件损坏 | 移植 `DLR` 的 h265→TS 回退 |
 | 长录 URL 过期 | 无限重启/空文件 | M3.4 周期重取地址 |
@@ -127,9 +134,12 @@
 ---
 
 ## F. 交付物清单
-- `docs/architecture.md`（已落档，草案 v1）
+- `docs/architecture.md`（已落档，已落地）
 - `docs/plan.md`（本文档）
-- M1–M5 各阶段代码于 `src/`，验证记录写入 `_agent/ROADMAP.md` 与 `_agent/contents_p.md`
+- M1–M7 各阶段代码于 `src/`，验证记录写入 `_agent/ROADMAP.md` 与 `_agent/contents_p.md`
 
-## G. 下一步
-进入 M1 实现前，先读 `Agent-Config/Specs/CODING.md`（编码规范）。建议从 1.1 骨架 + 1.2 a_bogus 移植与单测起步——这是痛点1 自维护能力的地基，且可独立验证。
+## G. 状态与后续
+M1–M7 已全部完成并通过验收（单测 49/49）。后续可选项：
+- 代码签名：面向外部分发消除 Windows SmartScreen 警告，需 EV 证书 + CI secrets（预留接口即可）。
+- macOS/Linux 打包 workflow：复用 PyInstaller spec，补 GitHub Actions matrix。
+- 更多平台特性：按需从 `SREC` 对标迁移。
