@@ -16,7 +16,6 @@
     "shell:allow-execute",
     "shell:allow-spawn",
     "shell:allow-kill",
-    "single-instance:default",
     "notification:default",
     "opener:default"
   ]
