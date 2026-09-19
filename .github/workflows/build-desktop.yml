@@ -57,7 +57,8 @@ jobs:
 
       - name: Stage sidecar binary (target triple)
         run: |
-          SRC="deploy/windows/dist/dy-sentry/dy-sentry.exe"
+          # 单文件模式：PyInstaller 产出 dist/dy-sentry.exe（而非 dist/dy-sentry/ 文件夹）
+          SRC="deploy/windows/dist/dy-sentry.exe"
           DST="desktop/binaries/dy-sentry-x86_64-pc-windows-msvc.exe"
           if [ ! -f "$SRC" ]; then echo "::error::sidecar not found at $SRC"; exit 1; fi
           mkdir -p desktop/binaries

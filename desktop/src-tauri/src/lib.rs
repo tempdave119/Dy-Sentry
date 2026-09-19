@@ -9,28 +9,32 @@
 //!
 //! - 启动屏（splash）等待 sidecar 端口就绪；
 //! - 就绪后打开主窗口指向管理页（监控+录制核心），直播预览作为次级入口；
-//! - 系统托盘、单实例、关闭最小化到托盘、退出时杀掉 sidecar（含 ffmpeg 子进程）。
+//! - 系统托盘、单实例、关闭最小化到托盘、退出时杀掉 sidecar（含 ffmpeg 子进程）；
+//! - 后端若启动失败，把 sidecar 的 stdout/stderr 写入日志文件，并在启动屏显示错误原因，
+//!   绝不静默退出（便于真机排错）。
 
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command as StdCommand;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use tauri::Emitter;
 use tauri::Manager;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
+use tauri_plugin_shell::process::CommandEvent;
 
 const BACKEND_PORT: u16 = 12580;
 const BACKEND_HOST: &str = "127.0.0.1";
-const BOOT_TIMEOUT: Duration = Duration::from_secs(30);
+const BOOT_TIMEOUT: Duration = Duration::from_secs(45);
 
 struct AppState {
     /// 打包后的 Python 后端进程（sidecar）。退出时杀掉它及其子进程树。
     sidecar: Mutex<Option<CommandChild>>,
-    /// 应用数据目录：sidecar 以此为 cwd，配置/录制产物落于此。
+    /// 应用数据目录：sidecar 以此为 cwd，配置与录制持久化。
     data_dir: PathBuf,
 }
 
@@ -70,6 +74,30 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// 在启动屏上显示后端启动失败原因（不静默退出，应用保持打开以便查看日志）。
+fn show_boot_error(splash: &tauri::WebviewWindow, reason: &str, log_path: &PathBuf) {
+    let safe = reason
+        .replace('\\', "\\\\")
+        .replace('"', "'")
+        .replace('\n', "<br>");
+    let html = format!(
+        "<!doctype html><html><head><meta charset='utf-8'>\
+<style>body{{font-family:-apple-system,'Segoe UI',sans-serif;background:#1b1b1f;color:#e6e6e6;padding:22px;line-height:1.5}}\
+h3{{color:#ff6b6b;margin-top:0}}code{{color:#9cdcfe;word-break:break-all;display:block;margin-top:6px;font-size:12px}}\
+p{{font-size:13px}}</style></head><body>\
+<h3>后端启动失败</h3><p>{}</p>\
+<p>日志文件：</p><code>{}</code>\
+<p style='color:#aaa;font-size:12px'>请查看日志后，右键系统托盘图标选择“退出”再重试。</p>\
+</body></html>",
+        safe,
+        log_path.display()
+    );
+    let _ = splash.eval(&format!(
+        "document.open();document.write({:?});document.close();",
+        html
+    ));
+}
+
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -89,6 +117,7 @@ pub fn run() {
             std::fs::create_dir_all(&data_dir)?;
             let log_dir = app.path().app_log_dir()?;
             std::fs::create_dir_all(&log_dir)?;
+            let log_path = log_dir.join("dy-sentry-sidecar.log");
 
             app.manage(AppState {
                 sidecar: Mutex::new(None),
@@ -109,24 +138,84 @@ pub fn run() {
             .build();
 
             // 启动内置 Python 后端（sidecar）。cwd 设为 app data 目录，使配置与录制持久化。
-            let sidecar_cmd = match app.shell().sidecar("dy-sentry") {
-                Ok(c) => c,
+            // sidecar 以 PyInstaller 单文件模式冻结，stdout/stderr 由 Tauri 管道捕获到日志文件。
+            let sidecar_opt = match app.shell().sidecar("dy-sentry") {
+                Ok(c) => Some(c),
                 Err(e) => {
-                    log::error!("sidecar 未配置或未找到: {e}");
-                    return Err(Box::new(e));
+                    log::error!("sidecar 未配置/未找到: {e}");
+                    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&log_path) {
+                        let _ = writeln!(f, "sidecar 未配置/未找到: {e}");
+                    }
+                    None
                 }
             };
-            let mut sidecar_builder = sidecar_cmd.args(["--port", &BACKEND_PORT.to_string()]);
-            if let Ok(cookie) = std::env::var("DY_COOKIE") {
-                if !cookie.is_empty() {
-                    sidecar_builder = sidecar_builder.env("DY_COOKIE", cookie);
+
+            let (mut rx, child) = match sidecar_opt {
+                Some(sidecar) => {
+                    let mut b = sidecar.args(["--port", &BACKEND_PORT.to_string()]);
+                    if let Ok(cookie) = std::env::var("DY_COOKIE") {
+                        if !cookie.is_empty() {
+                            b = b.env("DY_COOKIE", cookie);
+                        }
+                    }
+                    match b.current_dir(data_dir.clone()).spawn() {
+                        Ok((r, c)) => (Some(r), Some(c)),
+                        Err(e) => {
+                            log::error!("sidecar 启动失败: {e}");
+                            if let Ok(mut f) =
+                                OpenOptions::new().create(true).append(true).open(&log_path)
+                            {
+                                let _ = writeln!(f, "sidecar 启动失败: {e}");
+                            }
+                            (None, None)
+                        }
+                    }
                 }
+                None => (None, None),
+            };
+
+            // 记录 sidecar 进程，并开启日志捕获（仅在成功 spawn 时）。
+            let boot_failed = rx.is_none();
+            if let Some(child) = child {
+                app.state::<AppState>().sidecar.lock().unwrap().replace(child);
             }
-            let (_, child) = sidecar_builder.current_dir(data_dir.clone()).spawn()?;
-            app.state::<AppState>().sidecar.lock().unwrap().replace(child);
+            if let Some(mut rx) = rx {
+                let log_path_cap = log_path.clone();
+                tauri::async_runtime::spawn(async move {
+                    while let Some(event) = rx.recv().await {
+                        match &event {
+                            CommandEvent::Stdout(b) | CommandEvent::Stderr(b) => {
+                                if let Ok(mut f) =
+                                    OpenOptions::new().create(true).append(true).open(&log_path_cap)
+                                {
+                                    let _ = f.write_all(b);
+                                    let _ = f.write_all(b"\n");
+                                }
+                            }
+                            CommandEvent::Error(err) => {
+                                if let Ok(mut f) =
+                                    OpenOptions::new().create(true).append(true).open(&log_path_cap)
+                                {
+                                    let _ = writeln!(f, "[error] {err}");
+                                }
+                            }
+                            CommandEvent::Terminated(_) => {
+                                if let Ok(mut f) =
+                                    OpenOptions::new().create(true).append(true).open(&log_path_cap)
+                                {
+                                    let _ = writeln!(f, "[sidecar terminated]");
+                                }
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                });
+            }
 
             // 等待后端就绪后打开主窗口（默认指向管理/监控页）。
             let app_handle = app.handle().clone();
+            let log_path2 = log_path.clone();
             tauri::async_runtime::spawn(async move {
                 let ready = wait_for_backend(BOOT_TIMEOUT).await;
                 if ready {
@@ -149,11 +238,26 @@ pub fn run() {
                         .visible(false)
                         .build();
                     }
+                    // 成功才关闭启动屏。
+                    if let Some(splash) = app_handle.get_webview_window("splash") {
+                        let _ = splash.close();
+                    }
                 } else {
-                    log::error!("后端 30s 内未就绪，主窗口未打开");
-                }
-                if let Some(splash) = app_handle.get_webview_window("splash") {
-                    let _ = splash.close();
+                    // 失败：在启动屏显示错误原因，应用保持打开，绝不静默退出。
+                    let reason = if boot_failed {
+                        "Python 后端进程（sidecar）未能启动，请查看日志文件".to_string()
+                    } else {
+                        format!(
+                            "后端在 {}s 内未监听 http://{}:{}（可能启动缓慢或崩溃，请查看日志）",
+                            BOOT_TIMEOUT.as_secs(),
+                            BACKEND_HOST,
+                            BACKEND_PORT
+                        )
+                    };
+                    if let Some(splash) = app_handle.get_webview_window("splash") {
+                        show_boot_error(&splash, &reason, &log_path2);
+                    }
+                    log::error!("后端未就绪: {reason}");
                 }
             });
 

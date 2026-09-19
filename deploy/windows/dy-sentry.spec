@@ -78,31 +78,27 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# 单文件模式：产出单个自包含 dy-sentry.exe。
+# 原因：Tauri externalBin 只能接受【单个可执行文件】，无法承载 COLLECT 单文件夹模式
+# （那种模式下 exe 必须与 Python DLL / web / ffmpeg.exe 同目录才能启动）。
+# 单文件模式下 web/ 与 ffmpeg.exe 会被 PyInstaller 抽取到 _MEIPASS：
+#   - WEB_DIR = Path(__file__).resolve().parent.parent / "web" 解析到 _MEIPASS/web ✔
+#   - video_recorder._ffmpeg_bin() 会查 sys._MEIPASS ✔
 exe = EXE(
     pyz,
     a.scripts,
-    [],
-    exclude_binaries=True,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
     name="dy-sentry",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,  # 服务器：保留控制台看日志
+    console=False,  # 作为 Tauri 子进程运行，stdout/stderr 由 Tauri 管道捕获，无需独立控制台窗口
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name="dy-sentry",
 )
