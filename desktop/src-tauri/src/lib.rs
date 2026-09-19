@@ -122,7 +122,7 @@ pub fn run() {
                     sidecar_builder = sidecar_builder.env("DY_COOKIE", cookie);
                 }
             }
-            let child = sidecar_builder.cwd(&data_dir).spawn()?;
+            let (_, child) = sidecar_builder.current_dir(data_dir.clone()).spawn()?;
             app.state::<AppState>().sidecar.lock().unwrap().replace(child);
 
             // 等待后端就绪后打开主窗口（默认指向管理/监控页）。
